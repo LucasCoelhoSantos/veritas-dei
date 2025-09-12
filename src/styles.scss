@@ -1,0 +1,59 @@
+:root {
+  --primary-color: #1e40af;
+  --primary-light-color: #3b82f6;
+  --primary-dark-color: #1e3a8a;
+
+  --secondary-color: #6b7280;
+  --secondaty-light-color: #9ca3af;
+  --secondary-dark-color: #4b5563;
+
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+
+  --bg-primary: #faf8f5;
+  --bg-secondary: #f3efe9;
+  --bg-dark: #0f172a;
+
+  --success: #16a34a;
+  --success-light: #22c55e;
+
+  --warning: #f59e0b;
+  --warning-light: #facc15;
+
+  --danger: #dc2626;
+  --danger-light: #ef4444;
+
+  --info: #0ea5e9;
+  --info-light: #38bdf8;
+}
+
+/* Mapear para variáveis do Bootstrap para refletir o tema nas classes utilitárias */
+:root {
+  --bs-primary: var(--primary-color);
+  --bs-primary-rgb: 30, 64, 175;
+  --bs-secondary: var(--secondary-color);
+  --bs-secondary-rgb: 107, 114, 128;
+  --bs-warning: var(--warning);
+  --bs-warning-rgb: 245, 158, 11;
+  --bs-success: var(--success);
+  --bs-danger: var(--danger);
+  --bs-info: var(--info);
+
+  --bs-body-color: var(--text-primary);
+  --bs-secondary-color: var(--text-secondary);
+  --bs-tertiary-color: var(--text-muted);
+  --bs-body-bg: var(--bg-primary);
+  --bs-tertiary-bg: var(--bg-secondary);
+
+  --bs-link-color: var(--primary-color);
+  --bs-link-hover-color: var(--primary-light-color);
+}
+
+* {
+  font-family: 'Inter', sans-serif !important;
+}
+
+.fm-playfair {
+  font-family: 'Playfair Display', serif !important;
+}
