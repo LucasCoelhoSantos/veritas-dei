@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { N8nGateway } from '../../gateways/n8n.gateway';
 import { Mensagem, Referencia } from '../../models/mensagem.model';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 @Component({
   selector: 'app-chat',
@@ -14,21 +16,19 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   @ViewChild('chatArea') chatArea!: ElementRef<HTMLDivElement>;
   @ViewChild('inputPergunta') inputPergunta!: ElementRef<HTMLInputElement>;
   
-  // Signals para reatividade
   mensagens = signal<Mensagem[]>([]);
   novaPergunta = '';
   enviando = signal(false);
   contadorPerguntas = signal(10);
+  nivelConversacao = signal<'basico' | 'intermediario' | 'avancado'>('basico');
   
-  // Dependências
   private n8nGateway = inject(N8nGateway);
   
-  // Constantes para localStorage
   private readonly CHAVE_MENSAGENS = 'veritas-dei-mensagens';
   private readonly CHAVE_CONTADOR = 'veritas-dei-contador';
   private readonly CHAVE_USUARIO_ID = 'veritas-dei-user-id';
+  private readonly CHAVE_NIVEL = 'veritas-dei-nivel';
   
-  // Constantes para mensagens
   private readonly MENSAGEM_INICIAL_IA = 'Paz e bem! Sou seu assistente católico. Como posso ajudá-lo em sua jornada de fé hoje?';
   private readonly MENSAGEM_ERRO_PADRAO = 'Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente.';
   private readonly MENSAGEM_ERRO_EXTRACAO = 'Não foi possível obter uma resposta.';
@@ -71,10 +71,9 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   }
 
   formatarConteudo(conteudo: string): string {
-    return conteudo
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/\n/g, '<br>');
+    const html = marked.parse(conteudo ?? '', { breaks: true });
+    const seguro = DOMPurify.sanitize(html as string, { USE_PROFILES: { html: true } });
+    return seguro;
   }
 
   copiarMensagem(conteudo: string): void {
@@ -100,6 +99,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   private carregarEstadoInicial(): void {
     this.carregarContador();
     this.carregarMensagens();
+    this.carregarNivel();
   }
 
   private carregarContador(): void {
@@ -143,6 +143,13 @@ export class ChatComponent implements OnInit, AfterViewChecked {
     this.salvarMensagens();
   }
 
+  private carregarNivel(): void {
+    const salvo = localStorage.getItem(this.CHAVE_NIVEL);
+    if (salvo === 'basico' || salvo === 'intermediario' || salvo === 'avancado') {
+      this.nivelConversacao.set(salvo);
+    }
+  }
+
   private podeEnviarMensagem(): boolean {
     return this.novaPergunta.trim().length > 0 && 
            !this.enviando() && 
@@ -174,17 +181,16 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   private async obterRespostaDoN8n(pergunta: string): Promise<any> {
     return await this.n8nGateway.enviarPergunta({
       userId: this.obterUserId(),
-      pergunta: pergunta
+      pergunta: pergunta,
+      nivel: this.nivelConversacao()
     }).toPromise();
   }
 
   private processarRespostaDoN8n(resposta: any): void {
     if (!resposta) return;
 
-    console.log('Resposta do n8n:', resposta);
-
-    const conteudo = this.extrairConteudoResposta(resposta);
-    const referencias = this.extrairReferencias(resposta);
+    const conteudo = this.extrairConteudoResposta(resposta.output);
+    const referencias = this.extrairReferencias(resposta.output);
     const ehRespostaValida = this.validarResposta(conteudo);
 
     const novaMensagem: Mensagem = {
@@ -193,7 +199,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
         references: referencias
       },
       timestamp: new Date(),
-      n8nResponse: ehRespostaValida
+      n8nResponse: true
     };
 
     this.mensagens.update(mensagens => [...mensagens, novaMensagem]);
@@ -234,31 +240,18 @@ export class ChatComponent implements OnInit, AfterViewChecked {
     }, 100);
   }
 
-  private extrairConteudoResposta(resposta: any): string {
-    const conteudo = resposta?.resposta?.mensagem ??
-                     resposta?.mensagem ??
-                     resposta?.output?.resposta?.mensagem ??
-                     resposta?.output?.mensagem ??
-                     resposta?.output?.texto ??
-                     resposta?.output?.conteudo ??
-                     resposta?.output?.resposta ??
-                     (typeof resposta?.output === 'string' ? resposta.output : undefined) ??
-                     (typeof resposta?.resposta === 'string' ? resposta.resposta : undefined) ??
-                     (typeof resposta === 'string' ? resposta : undefined);
+  private extrairConteudoResposta(resposta: Mensagem): string {
+    const conteudo = resposta?.response?.message;
     
     if (conteudo && typeof conteudo === 'string' && conteudo.trim().length > 0) {
       return conteudo.trim();
     }
     
-    console.log('Estrutura da resposta não reconhecida:', resposta);
     return this.MENSAGEM_ERRO_EXTRACAO;
   }
 
-  private extrairReferencias(resposta: any): (string | Referencia)[] {
-    const refsRaw = resposta?.resposta?.referencias ??
-                   resposta?.referencias ??
-                   resposta?.output?.resposta?.referencias ??
-                   resposta?.output?.referencias;
+  private extrairReferencias(resposta: Mensagem): (string | Referencia)[] {
+    const refsRaw = resposta?.response?.references;
 
     if (Array.isArray(refsRaw)) {
       return refsRaw
@@ -272,8 +265,6 @@ export class ChatComponent implements OnInit, AfterViewChecked {
           return '';
         })
         .filter(Boolean);
-    } else if (typeof refsRaw === 'string') {
-      return refsRaw.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
     }
 
     return [];
@@ -300,6 +291,10 @@ export class ChatComponent implements OnInit, AfterViewChecked {
 
   private salvarMensagens(): void {
     localStorage.setItem(this.CHAVE_MENSAGENS, JSON.stringify(this.mensagens()));
+  }
+
+  private salvarNivel(): void {
+    localStorage.setItem(this.CHAVE_NIVEL, this.nivelConversacao());
   }
 
   private obterUserId(): string {
@@ -379,5 +374,11 @@ export class ChatComponent implements OnInit, AfterViewChecked {
         document.body.removeChild(toast);
       }
     }, 3000);
+  }
+
+  selecionarNivel(nivel: 'basico' | 'intermediario' | 'avancado'): void {
+    if (this.nivelConversacao() === nivel) return;
+    this.nivelConversacao.set(nivel);
+    this.salvarNivel();
   }
 }

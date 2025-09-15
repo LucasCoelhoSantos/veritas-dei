@@ -52,7 +52,6 @@ import { Component } from '@angular/core';
 
         <div class="col-12 col-md-6 col-lg-4">
           <div class="position-relative h-100">
-            <div class="popular-badge">Mais Popular</div>
             <div class="card pricing-card h-100 shadow border-warning border-2 highlight">
               <div class="card-body d-flex flex-column">
                 <div class="text-center mb-3">
@@ -77,7 +76,7 @@ import { Component } from '@angular/core';
                   </li>
                   <li class="d-flex align-items-start gap-2 mb-2">
                     <i class="bi bi-check2-circle text-success"></i>
-                    <span>Modo catequese completo</span>
+                    <span>Modo catequese báisco, intermediário e avançado</span>
                   </li>
                   <li class="d-flex align-items-start gap-2 mb-2">
                     <i class="bi bi-check2-circle text-success"></i>
@@ -91,49 +90,6 @@ import { Component } from '@angular/core';
                 <div class="d-grid mt-3">
                   <button class="btn btn-warning text-dark fw-semibold">Assinar Agora</button>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-12 col-md-6 col-lg-4">
-          <div class="card pricing-card h-100 shadow-sm border-0">
-            <div class="card-body d-flex flex-column">
-              <div class="text-center mb-3">
-                <div class="icon-circle bg-primary-subtle text-primary">
-                  <i class="bi bi-mortarboard"></i>
-                </div>
-              </div>
-              <h3 class="h4 text-center mb-1">Estudioso</h3>
-              <p class="text-center text-secondary small mb-3">Para estudantes de teologia</p>
-              <div class="text-center mb-3">
-                <span class="preco display-6 fw-bold">R$ 39,90</span>
-                <small class="text-secondary">/mês</small>
-              </div>
-              <ul class="list-unstyled mt-2 small flex-grow-1">
-                <li class="d-flex align-items-start gap-2 mb-2">
-                  <i class="bi bi-check2-circle text-success"></i>
-                  <span>Tudo do plano Fiel</span>
-                </li>
-                <li class="d-flex align-items-start gap-2 mb-2">
-                  <i class="bi bi-check2-circle text-success"></i>
-                  <span>Busca avançada</span>
-                </li>
-                <li class="d-flex align-items-start gap-2 mb-2">
-                  <i class="bi bi-check2-circle text-success"></i>
-                  <span>Catequese personalizada</span>
-                </li>
-                <li class="d-flex align-items-start gap-2 mb-2">
-                  <i class="bi bi-check2-circle text-success"></i>
-                  <span>Encíclicas completas</span>
-                </li>
-                <li class="d-flex align-items-start gap-2">
-                  <i class="bi bi-check2-circle text-success"></i>
-                  <span>Exportação de respostas</span>
-                </li>
-              </ul>
-              <div class="d-grid mt-3">
-                <button class="btn btn-primary">Começar Premium</button>
               </div>
             </div>
           </div>

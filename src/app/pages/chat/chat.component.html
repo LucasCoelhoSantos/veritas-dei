@@ -86,6 +86,24 @@
           </div>
 
           <div class="border-top p-3">
+            <!-- Seletor de Nível -->
+            <div class="btn-group mb-2" role="group" aria-label="Nível de conhecimento">
+              <button type="button" class="btn btn-outline-primary" 
+                      [class.active]="nivelConversacao() === 'basico'"
+                      (click)="selecionarNivel('basico')">
+                <i class="bi bi-book me-1"></i> Básico
+              </button>
+              <button type="button" class="btn btn-outline-primary" 
+                      [class.active]="nivelConversacao() === 'intermediario'"
+                      (click)="selecionarNivel('intermediario')">
+                <i class="bi bi-book-half me-1"></i> Intermediário
+              </button>
+              <button type="button" class="btn btn-outline-primary" 
+                      [class.active]="nivelConversacao() === 'avancado'"
+                      (click)="selecionarNivel('avancado')">
+                <i class="bi bi-book-fill me-1"></i> Avançado
+              </button>
+            </div>
             <div class="input-group">
               <input type="text" class="form-control" placeholder="Faça sua pergunta sobre a fé católica..."
                      [(ngModel)]="novaPergunta" (keydown.enter)="enviarMensagem()"
