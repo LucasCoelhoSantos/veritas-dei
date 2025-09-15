@@ -10,8 +10,7 @@ import { RouterLink, RouterOutlet } from '@angular/router';
     <nav class="navbar navbar-expand-lg bg-white border-bottom sticky-top shadow-sm">
       <div class="container">
         <a class="navbar-brand fw-semibold fm-playfair" [routerLink]="['/inicio']">
-          <!--<img src="assets/logo.png" alt="Veritas Dei" class="navbar-brand" width="30" height="30">-->
-          <i class="bi bi-stars"></i>
+          <img src="/icons/icon-512x512.png" alt="logo" class="navbar-brand" height="40">
           Veritas Dei
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav"
