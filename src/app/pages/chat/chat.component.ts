@@ -29,7 +29,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   private readonly CHAVE_USUARIO_ID = 'veritas-dei-user-id';
   private readonly CHAVE_NIVEL = 'veritas-dei-nivel';
   
-  private readonly MENSAGEM_INICIAL_IA = 'Paz e bem! Sou seu assistente católico. Como posso ajudá-lo em sua jornada de fé hoje?';
+  private readonly MENSAGEM_INICIAL_IA = 'Paz e bem! Sou seu Veritas Dei, seu assistente católico. Como posso ajudá-lo em sua jornada de fé hoje?';
   private readonly MENSAGEM_ERRO_PADRAO = 'Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente.';
   private readonly MENSAGEM_ERRO_EXTRACAO = 'Desculpe, ocorreu um erro ao processar sua resposta. Tente novamente.';
 
