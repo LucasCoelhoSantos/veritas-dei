@@ -62,7 +62,7 @@ import { Component } from '@angular/core';
                 <h3 class="h4 text-center mb-1">Fiel</h3>
                 <p class="text-center text-secondary small mb-3">Para aprofundar na fé</p>
                 <div class="text-center mb-3">
-                  <span class="preco display-6 fw-bold">R$ 19,90</span>
+                  <span class="preco display-6 fw-bold">R$ 4,90</span>
                   <small class="text-secondary">/mês</small>
                 </div>
                 <ul class="list-unstyled mt-2 small flex-grow-1">

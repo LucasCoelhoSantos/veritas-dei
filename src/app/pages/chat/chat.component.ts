@@ -19,7 +19,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   mensagens = signal<Mensagem[]>([]);
   novaPergunta = '';
   enviando = signal(false);
-  contadorPerguntas = signal(10);
+  contadorPerguntas = signal(100); // TO DO mudar para 10
   nivelConversacao = signal<'basico' | 'intermediario' | 'avancado'>('basico');
   
   private n8nGateway = inject(N8nGateway);
@@ -42,7 +42,12 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   }
 
   async enviarMensagem(): Promise<void> {
-    if (!this.podeEnviarMensagem()) {
+    if (!this.novaPergunta.trim() || this.enviando()) {
+      return;
+    }
+
+    if (this.contadorPerguntas() <= 0) {
+      this.mostrarModalPerguntasEsgotadas();
       return;
     }
 
@@ -148,12 +153,6 @@ export class ChatComponent implements OnInit, AfterViewChecked {
     if (salvo === 'basico' || salvo === 'intermediario' || salvo === 'avancado') {
       this.nivelConversacao.set(salvo);
     }
-  }
-
-  private podeEnviarMensagem(): boolean {
-    return this.novaPergunta.trim().length > 0 && 
-           !this.enviando() && 
-           this.contadorPerguntas() > 0;
   }
 
   private limparInput(): void {
@@ -380,5 +379,61 @@ export class ChatComponent implements OnInit, AfterViewChecked {
     if (this.nivelConversacao() === nivel) return;
     this.nivelConversacao.set(nivel);
     this.salvarNivel();
+  }
+
+  private mostrarModalPerguntasEsgotadas(): void {
+    const modalElement = document.getElementById('modalPerguntasEsgotadas');
+    if (modalElement) {
+      // Usar Bootstrap Modal API se disponível
+      const modal = (window as any).bootstrap?.Modal?.getOrCreateInstance(modalElement);
+      if (modal) {
+        modal.show();
+      } else {
+        // Fallback: mostrar modal manualmente
+        modalElement.classList.add('show');
+        modalElement.style.display = 'block';
+        modalElement.setAttribute('aria-hidden', 'false');
+        
+        // Adicionar backdrop
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop fade show';
+        backdrop.id = 'modalBackdrop';
+        document.body.appendChild(backdrop);
+        document.body.classList.add('modal-open');
+      }
+    }
+  }
+
+  fecharModalPerguntasEsgotadas(): void {
+    const modalElement = document.getElementById('modalPerguntasEsgotadas');
+    if (modalElement) {
+      // Usar Bootstrap Modal API se disponível
+      const modal = (window as any).bootstrap?.Modal?.getInstance(modalElement);
+      if (modal) {
+        modal.hide();
+      } else {
+        // Fallback: fechar modal manualmente
+        modalElement.classList.remove('show');
+        modalElement.style.display = 'none';
+        modalElement.setAttribute('aria-hidden', 'true');
+        
+        // Remover backdrop
+        const backdrop = document.getElementById('modalBackdrop');
+        if (backdrop) {
+          document.body.removeChild(backdrop);
+        }
+        document.body.classList.remove('modal-open');
+      }
+    }
+  }
+
+  assistirAnuncio(): void {
+    window.open('https://www.youtube.com/watch?v=dQw4w9WgXcQ', '_blank');
+    this.fecharModalPerguntasEsgotadas();
+    this.contadorPerguntas.update(contador => contador + 5);
+    this.salvarContador();
+    this.mostrarToast('Você ganhou 5 perguntas!');
+    this.enviarMensagem();
+    this.focarInput();
   }
 }
