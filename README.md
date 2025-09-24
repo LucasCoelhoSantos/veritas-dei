@@ -4,7 +4,7 @@
 
 Micro-SaaS PWA IA Católica.
 
-Esse sistema é um chatbot integrado com n8n para responder perguntas teológicas sempre com base no católicismo e seus três pilares:
+Esse sistema é um chatbot para responder perguntas teológicas sempre com base no católicismo e seus três pilares:
 - Sagradas Escrituras
 - Tradição
 - Magistério
@@ -38,8 +38,16 @@ Os arquivos ficam em `dist/veritas-dei`.
 ## Estrutura atual
 - Páginas: `inicio`, `pagar`, `chat`, `perfil`
 - Estilos: somente Bootstrap (`angular.json` inclui `bootstrap.min.css`)
-- Gateway mínimo `N8nGateway` em `src/app/dados/gateways/n8n.gateway.ts`
+- IA: Integração direta com APIs de IA (Gemini, ChatGPT, Claude)
+
+## Configuração
+1. Configure as API keys em `src/environments/environment.ts`
+2. Escolha o provedor padrão (Gemini, ChatGPT ou Claude)
+3. Ajuste parâmetros como temperatura e maxTokens
+4. Veja `CONFIGURACAO_IA.md` para instruções detalhadas
 
 ## Próximos passos
-- Adicionar proxy seguro (Cloudflare Worker/Vercel) para n8n
 - Implementar autenticação e guarda de rotas
+- Implementar streaming de respostas em tempo real
+- Adicionar cache de respostas para otimização
+- Adicionar métricas de uso e monitoramento

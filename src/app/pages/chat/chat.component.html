@@ -1,29 +1,29 @@
-<div class="d-flex flex-column h-auto">
+<div class="d-flex flex-column h-100">
   <div #chatArea class="flex-grow-1 overflow-auto p-3" style="height: calc(100vh - 200px);">
     <ng-container *ngFor="let mensagem of mensagens(); trackBy: trackByTimestamp">
-      <div *ngIf="mensagem.n8nResponse" class="d-flex align-items-start mb-4">
+      <div *ngIf="mensagem.autor == 'ia' && !mensagem.parcial" class="d-flex align-items-start mb-4">
         <div class="bg-light rounded-circle p-2 me-3 shadow-sm">
           <img src="/icons/icon-72x72.png" alt="logo" class="img-fluid" style="height: 30px; width: 50px;">
         </div>
         <div class="flex-grow-1">
-          <div class="bg-light-subtle border rounded-4 p-3 shadow-sm mb-2" [innerHTML]="formatarConteudo(mensagem.response.message)"></div>
+          <div class="bg-light-subtle border rounded-4 p-3 shadow-sm mb-2 w-100 text-break" style="max-width: 100%;" [innerHTML]="formatarConteudo(mensagem.mensagem)"></div>
           
-          <div class="d-flex gap-2 mt-1">
-            <button class="btn btn-sm btn-outline-primary rounded-pill" (click)="copiarMensagem(mensagem.response.message)">
+          <div class="d-flex gap-2 mt-1" *ngIf="!mensagem.parcial">
+            <button class="btn btn-sm btn-outline-primary rounded-pill" (click)="copiarMensagem(mensagem.mensagem)">
               <i class="bi bi-clipboard"></i>
             </button>
-            <button class="btn btn-sm btn-outline-primary rounded-pill" (click)="compartilharMensagem(mensagem.response.message)">
+            <button class="btn btn-sm btn-outline-primary rounded-pill" (click)="compartilharMensagem(mensagem.mensagem)">
               <i class="bi bi-share"></i>
             </button>
           </div>
 
-          <div *ngIf="mensagem.response.references?.length" class="mt-2">
+          <div *ngIf="mensagem.referencias?.length" class="mt-2">
             <small class="text-muted d-block mb-1">Fontes:</small>
             <div class="d-flex flex-wrap gap-1">
-              <ng-container *ngFor="let ref of mensagem.response.references">
+              <ng-container *ngFor="let ref of mensagem.referencias">
                 <span *ngIf="ehString(ref)" class="badge bg-secondary-subtle text-dark">{{ ref }}</span>
                 <a *ngIf="!ehString(ref)" [href]="ref.url" target="_blank" class="badge bg-secondary-subtle text-dark text-decoration-none">
-                  {{ ref.title }}
+                  {{ ref.titulo }}
                 </a>
               </ng-container>
             </div>
@@ -31,10 +31,10 @@
         </div>
       </div>
 
-      <div *ngIf="!mensagem.n8nResponse" class="d-flex align-items-start justify-content-end mb-4">
+      <div *ngIf="mensagem.autor == 'usuario'" class="d-flex align-items-start justify-content-end mb-4">
         <div class="flex-grow-1 text-end">
-          <div class="bg-primary text-white rounded-4 p-3 shadow-sm d-inline-block">
-            {{ mensagem.response.message }}
+          <div class="bg-primary text-white rounded-4 p-3 shadow-sm d-inline-block text-break" style="max-width: 100%;">
+            {{ mensagem.mensagem }}
           </div>
         </div>
         <div class="bg-primary rounded-circle p-2 ms-3 shadow-sm">
@@ -45,12 +45,19 @@
 
     <div *ngIf="enviando()" class="d-flex align-items-start mb-4">
       <div class="bg-light rounded-circle p-2 me-3 shadow-sm">
-        <i class="bi bi-robot text-primary"></i>
+        <img src="/icons/icon-72x72.png" alt="logo" class="img-fluid" style="height: 30px; width: 50px;">
       </div>
-      <div class="bg-light-subtle border rounded-4 p-3 shadow-sm d-flex align-items-center">
-        <div class="spinner-border spinner-border-sm text-primary me-2"></div>
-        <span class="text-muted">Pensando...</span>
-      </div>
+      <ng-container>
+        <div *ngIf="streamingAtual as parcial; else pensando" class="bg-light-subtle border rounded-4 p-3 shadow-sm w-100">
+          <div [innerHTML]="formatarConteudo(parcial || '')"></div>
+        </div>
+        <ng-template #pensando>
+          <div class="bg-light-subtle border rounded-4 p-3 shadow-sm d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+            <span class="text-muted">Pensando...</span>
+          </div>
+        </ng-template>
+      </ng-container>
     </div>
   </div>
 
@@ -76,6 +83,9 @@
               [class.active]="nivelConversacao() === 'avancado'"
               (click)="selecionarNivel('avancado')">
         <i class="bi bi-book-fill me-1"></i> Avançado
+      </button>
+      <button type="button" class="btn btn-outline-secondary ms-auto" (click)="abrirModalNiveis()" aria-label="Ajuda sobre níveis">
+        <i class="bi bi-question-circle"></i>
       </button>
     </div>
     
@@ -121,6 +131,37 @@
             Fechar
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalNiveisConhecimento" tabindex="-1" aria-labelledby="modalNiveisConhecimentoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg">
+      <div class="modal-header border-0 pb-0 mb-3">
+        <h5 class="modal-title fw-bold" id="modalNiveisConhecimentoLabel">
+          <i class="bi bi-question-circle me-2 text-primary"></i>
+          Níveis de conhecimento
+        </h5>
+        <button type="button" class="btn-close" (click)="fecharModalNiveis()" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body p-4 pt-2">
+        <div class="mb-4">
+          <div class="d-flex align-items-center mb-1"><i class="bi bi-book me-2 text-primary"></i><strong>Básico</strong></div>
+          <p class="text-secondary small mb-0">Respostas claras e concisas, sem termos complexos. Ideal para iniciantes.</p>
+        </div>
+        <div class="mb-4">
+          <div class="d-flex align-items-center mb-1"><i class="bi bi-book-half me-2 text-primary"></i><strong>Intermediário</strong></div>
+          <p class="text-secondary small mb-0">Inclui porquês, contexto histórico e teológico, mantendo linguagem acessível.</p>
+        </div>
+        <div>
+          <div class="d-flex align-items-center mb-1"><i class="bi bi-book-fill me-2 text-primary"></i><strong>Avançado</strong></div>
+          <p class="text-secondary small mb-0">Integra diferentes fontes do Magistério, com referências precisas e maior profundidade.</p>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-primary w-100" (click)="fecharModalNiveis()">Entendi</button>
       </div>
     </div>
   </div>

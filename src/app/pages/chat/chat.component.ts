@@ -1,8 +1,14 @@
-import { Component, OnInit, signal, inject, ElementRef, ViewChild, AfterViewChecked } from '@angular/core';
+import { Component, OnInit, signal, inject, ElementRef, ViewChild, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { N8nGateway } from '../../gateways/n8n.gateway';
-import { Mensagem, Referencia } from '../../models/mensagem.model';
+import { EnviarPerguntaUseCase } from '../../application/use-cases/enviar-pergunta.usecase';
+import { Mensagem, Referencia, Pergunta, CriarNivelObjeto } from '../../domain/models/mensagem.model';
+import { ServicoArmazenamento } from '../../infrastructure/services/storage.service';
+import { ServicoUIFeedback } from '../../infrastructure/services/ui-feedback.service';
+import { ServicoClipboardCompartilhar } from '../../infrastructure/services/clipboard-share.service';
+import { ReferenciaStaticRepository } from '../../infrastructure/repositories/referencia-static.repository';
+
+interface MensagemUI extends Mensagem { parcial?: boolean }
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -10,35 +16,80 @@ import DOMPurify from 'dompurify';
   selector: 'app-chat',
   standalone: true,
   imports: [CommonModule, FormsModule],
-  templateUrl: './chat.component.html'
+  templateUrl: './chat.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class ChatComponent implements OnInit, AfterViewChecked {
+export class ChatComponent implements OnInit {
   @ViewChild('chatArea') chatArea!: ElementRef<HTMLDivElement>;
   @ViewChild('inputPergunta') inputPergunta!: ElementRef<HTMLInputElement>;
   
-  mensagens = signal<Mensagem[]>([]);
+  readonly mensagens = signal<MensagemUI[]>([]);
   novaPergunta = '';
-  enviando = signal(false);
-  contadorPerguntas = signal(100); // TO DO mudar para 10
-  nivelConversacao = signal<'basico' | 'intermediario' | 'avancado'>('basico');
+  readonly enviando = signal(false);
+  readonly contadorPerguntas = signal(10);
+  readonly nivelConversacao = signal<'basico' | 'intermediario' | 'avancado'>('basico');
   
-  private n8nGateway = inject(N8nGateway);
+  private readonly enviarPerguntaUC = inject(EnviarPerguntaUseCase);
+  private readonly armazenamento = inject(ServicoArmazenamento);
+  private readonly ui = inject(ServicoUIFeedback);
+  private readonly clipboard = inject(ServicoClipboardCompartilhar);
+  private readonly referenciasRepo = inject(ReferenciaStaticRepository);
   
-  private readonly CHAVE_MENSAGENS = 'veritas-dei-mensagens';
-  private readonly CHAVE_CONTADOR = 'veritas-dei-contador';
-  private readonly CHAVE_USUARIO_ID = 'veritas-dei-user-id';
-  private readonly CHAVE_NIVEL = 'veritas-dei-nivel';
+  private static readonly CHAVE_MENSAGENS = 'veritas-dei-mensagens';
+  private static readonly CHAVE_CONTADOR = 'veritas-dei-contador';
+  private static readonly CHAVE_NIVEL = 'veritas-dei-nivel';
   
-  private readonly MENSAGEM_INICIAL_IA = 'Paz e bem! Sou seu Veritas Dei, seu assistente católico. Como posso ajudá-lo em sua jornada de fé hoje?';
-  private readonly MENSAGEM_ERRO_PADRAO = 'Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente.';
-  private readonly MENSAGEM_ERRO_EXTRACAO = 'Desculpe, ocorreu um erro ao processar sua resposta. Tente novamente.';
+  private static readonly MENSAGEM_INICIAL_IA = 'Paz e bem! Sou Veritas Dei, seu assistente católico. Como posso ajudá-lo em sua jornada de fé hoje?';
+  private static readonly MENSAGEM_ERRO_PADRAO = 'Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente.';
+  private static readonly MENSAGEM_ERRO_EXTRACAO = 'Desculpe, ocorreu um erro ao processar sua resposta. Tente novamente.';
 
   ngOnInit(): void {
     this.carregarEstadoInicial();
   }
-
-  ngAfterViewChecked(): void {
+  
+  ngAfterViewInit(): void {
     this.rolarParaBaixo();
+  }
+
+  private carregarEstadoInicial(): void {
+    this.carregarContador();
+    this.carregarMensagens();
+    this.carregarNivel();
+  }
+
+  private carregarContador(): void {
+    const contadorSalvo = this.armazenamento.obter<number | string>(ChatComponent.CHAVE_CONTADOR, null);
+    if (contadorSalvo != null) {
+      const valor = typeof contadorSalvo === 'string' ? parseInt(contadorSalvo, 10) : contadorSalvo;
+      if (Number.isFinite(valor as number)) this.contadorPerguntas.set(valor as number);
+    }
+  }
+
+  private carregarMensagens(): void {
+    const mensagensSalvas = this.armazenamento.obter<any[]>(ChatComponent.CHAVE_MENSAGENS, []);
+    if (mensagensSalvas && mensagensSalvas.length) {
+      try {
+        const mensagens = mensagensSalvas;
+        const normalizadas: MensagemUI[] = (Array.isArray(mensagens) ? mensagens : []).map((m: any) => ({
+          mensagem: String(m?.mensagem ?? ''),
+          referencias: Array.isArray(m?.referencias) ? m.referencias : undefined,
+          autor: m?.autor === 'usuario' ? 'usuario' : 'ia',
+          dataHora: m?.dataHora ? new Date(m.dataHora) : new Date()
+        }));
+        this.mensagens.set(normalizadas);
+      } catch (error) {
+        this.criarMensagemInicial();
+      }
+    } else {
+      this.criarMensagemInicial();
+    }
+  }
+
+  private carregarNivel(): void {
+    const salvo = this.armazenamento.obter<string>(ChatComponent.CHAVE_NIVEL, null);
+    if (salvo === 'basico' || salvo === 'intermediario' || salvo === 'avancado') {
+      this.nivelConversacao.set(salvo);
+    }
   }
 
   async enviarMensagem(): Promise<void> {
@@ -51,20 +102,61 @@ export class ChatComponent implements OnInit, AfterViewChecked {
       return;
     }
 
-    const pergunta = this.novaPergunta.trim();
+    const perguntaTexto = this.novaPergunta.trim();
     this.limparInput();
     this.definirEstadoEnviando(true);
+    this.adicionarMensagemUsuario(perguntaTexto);
 
-    this.adicionarMensagemUsuario(pergunta);
+    const perguntaIA: Pergunta = {
+      pergunta: perguntaTexto,
+      nivelConversacao: CriarNivelObjeto(this.nivelConversacao()),
+      linksConfiaveis: this.referenciasRepo.obterTodas()
+    };
 
-    try {
-      const resposta = await this.obterRespostaDoN8n(pergunta);
-      this.processarRespostaDoN8n(resposta);
-    } catch (error) {
-      this.processarErroNaResposta(error);
-    } finally {
-      this.finalizarEnvio();
-    }
+    this.adicionarMensagemParcialIA('');
+    const sub = this.enviarPerguntaUC.executarStreaming(perguntaIA).subscribe({
+      next: (chunk) => {
+        this.atualizarMensagemParcialIA(chunk);
+      },
+      error: (error) => {
+        this.processarErroNaResposta(error);
+        this.finalizarEnvio();
+        sub.unsubscribe();
+      },
+      complete: () => {
+        const conteudoFinal = this.enviarPerguntaUC.streamingResposta();
+        const respostaFinal = {
+          resposta: conteudoFinal,
+          referencias: [],
+          fontesConsultadas: []
+        } as any;
+        this.processarRespostaDaIA(respostaFinal);
+        this.finalizarEnvio();
+        sub.unsubscribe();
+      }
+    });
+  }
+
+  private adicionarMensagemParcialIA(conteudo: string): void {
+    const mensagemParcial: MensagemUI = {
+      mensagem: conteudo,
+      dataHora: new Date(),
+      autor: 'ia',
+      parcial: true
+    };
+    this.mensagens.update(msgs => [...msgs, mensagemParcial]);
+    this.rolarParaBaixo();
+  }
+
+  private atualizarMensagemParcialIA(chunk: string): void {
+    this.mensagens.update(msgs => {
+      const ultima = msgs[msgs.length - 1] as MensagemUI | undefined;
+      if (ultima && ultima.autor === 'ia' && ultima.parcial) {
+        ultima.mensagem += chunk;
+      }
+      return [...msgs];
+    });
+    this.rolarParaBaixo();
   }
 
   ehString(ref: string | Referencia): ref is string {
@@ -72,7 +164,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   }
 
   trackByTimestamp(index: number, mensagem: Mensagem): number {
-    return mensagem.timestamp.getTime();
+    return mensagem.dataHora.getTime();
   }
 
   formatarConteudo(conteudo: string): string {
@@ -82,77 +174,24 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   }
 
   copiarMensagem(conteudo: string): void {
-    const textoLimpo = this.removerTagsHtml(conteudo);
-    
-    if (this.temClipboardModerno()) {
-      this.copiarComClipboardModerno(textoLimpo);
-    } else {
-      this.copiarComFallback(textoLimpo);
-    }
+    this.clipboard.copiarTexto(conteudo)
+      .then(() => this.ui.mostrarToast('Mensagem copiada para a área de transferência!'))
+      .catch(() => this.ui.mostrarToast('Erro ao copiar mensagem', 'error'));
   }
 
   compartilharMensagem(conteudo: string): void {
-    const textoLimpo = this.removerTagsHtml(conteudo);
-    
-    if (this.temWebShare()) {
-      this.compartilharComWebShare(textoLimpo);
-    } else {
-      this.compartilharComFallback(textoLimpo);
-    }
-  }
-
-  private carregarEstadoInicial(): void {
-    this.carregarContador();
-    this.carregarMensagens();
-    this.carregarNivel();
-  }
-
-  private carregarContador(): void {
-    const contadorSalvo = localStorage.getItem(this.CHAVE_CONTADOR);
-    if (contadorSalvo) {
-      this.contadorPerguntas.set(parseInt(contadorSalvo, 10));
-    }
-  }
-
-  private carregarMensagens(): void {
-    const mensagensSalvas = localStorage.getItem(this.CHAVE_MENSAGENS);
-    
-    if (mensagensSalvas) {
-      try {
-        const mensagens = JSON.parse(mensagensSalvas);
-        const mensagensComTimestamp = mensagens.map((m: any) => ({
-          ...m,
-          timestamp: new Date(m.timestamp)
-        }));
-        this.mensagens.set(mensagensComTimestamp);
-      } catch (error) {
-        console.error('Erro ao carregar mensagens do localStorage:', error);
-        this.criarMensagemInicial();
-      }
-    } else {
-      this.criarMensagemInicial();
-    }
+    this.clipboard.compartilharTexto(conteudo).catch(() => {});
   }
 
   private criarMensagemInicial(): void {
-    const mensagemInicial: Mensagem = {
-      response: {
-        message: this.MENSAGEM_INICIAL_IA,
-        references: []
-      },
-      timestamp: new Date(),
-      n8nResponse: true
+    const mensagemInicial: MensagemUI = {
+      mensagem: ChatComponent.MENSAGEM_INICIAL_IA,
+      dataHora: new Date(),
+      autor: 'ia'
     };
     
     this.mensagens.set([mensagemInicial]);
     this.salvarMensagens();
-  }
-
-  private carregarNivel(): void {
-    const salvo = localStorage.getItem(this.CHAVE_NIVEL);
-    if (salvo === 'basico' || salvo === 'intermediario' || salvo === 'avancado') {
-      this.nivelConversacao.set(salvo);
-    }
   }
 
   private limparInput(): void {
@@ -164,44 +203,41 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   }
 
   private adicionarMensagemUsuario(pergunta: string): void {
-    const mensagemUsuario: Mensagem = {
-      response: {
-        message: pergunta,
-        references: []
-      },
-      timestamp: new Date(),
-      n8nResponse: false
+    const mensagemUsuario: MensagemUI = {
+      mensagem: pergunta,
+      dataHora: new Date(),
+      autor: 'usuario'
     };
     
     this.mensagens.update(mensagens => [...mensagens, mensagemUsuario]);
     this.salvarMensagens();
   }
 
-  private async obterRespostaDoN8n(pergunta: string): Promise<any> {
-    return await this.n8nGateway.enviarPergunta({
-      userId: this.obterUserId(),
-      pergunta: pergunta,
-      nivel: this.nivelConversacao()
-    }).toPromise();
-  }
-
-  private processarRespostaDoN8n(resposta: any): void {
+  private processarRespostaDaIA(resposta: any): void {
     if (!resposta) return;
 
-    const conteudo = this.extrairConteudoResposta(resposta.output);
-    const referencias = this.extrairReferencias(resposta.output);
+    const conteudo = resposta.resposta || ChatComponent.MENSAGEM_ERRO_EXTRACAO;
+    const referencias = resposta.referencias || [];
     const ehRespostaValida = this.validarResposta(conteudo);
-
-    const novaMensagem: Mensagem = {
-      response: {
-        message: conteudo,
-        references: referencias
-      },
-      timestamp: new Date(),
-      n8nResponse: true
-    };
-
-    this.mensagens.update(mensagens => [...mensagens, novaMensagem]);
+    
+    // Se a última mensagem for a parcial da IA, substitui em vez de duplicar
+    this.mensagens.update(mensagens => {
+      const copia = [...mensagens];
+      const ultima = copia[copia.length - 1];
+      if (ultima && ultima.autor === 'ia' && ultima.parcial) {
+        ultima.mensagem = conteudo;
+        ultima.referencias = referencias;
+        delete (ultima as any).parcial;
+        return copia;
+      }
+      const novaMensagem: MensagemUI = {
+        mensagem: conteudo,
+        referencias: referencias,
+        dataHora: new Date(),
+        autor: 'ia'
+      };
+      return [...copia, novaMensagem];
+    });
     
     if (ehRespostaValida) {
       this.decrementarContador();
@@ -211,18 +247,23 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   }
 
   private processarErroNaResposta(error: any): void {
-    console.error('Erro ao enviar pergunta:', error);
-    
-    const mensagemErro: Mensagem = {
-      response: {
-        message: this.MENSAGEM_ERRO_PADRAO,
-        references: []
-      },
-      timestamp: new Date(),
-      n8nResponse: true
-    };
-    
-    this.mensagens.update(mensagens => [...mensagens, mensagemErro]);
+    const conteudoErro = ChatComponent.MENSAGEM_ERRO_PADRAO;
+    // Se houver mensagem parcial, substitui por erro; senão adiciona nova
+    this.mensagens.update(mensagens => {
+      const copia = [...mensagens];
+      const ultima = copia[copia.length - 1];
+      if (ultima && ultima.autor === 'ia' && (ultima as any).parcial) {
+        ultima.mensagem = conteudoErro;
+        delete (ultima as any).parcial;
+        return copia;
+      }
+      const mensagemErro: MensagemUI = {
+        mensagem: conteudoErro,
+        dataHora: new Date(),
+        autor: 'ia'
+      };
+      return [...copia, mensagemErro];
+    });
     this.salvarMensagens();
   }
 
@@ -239,38 +280,8 @@ export class ChatComponent implements OnInit, AfterViewChecked {
     }, 100);
   }
 
-  private extrairConteudoResposta(resposta: Mensagem): string {
-    const conteudo = resposta?.response?.message;
-    
-    if (conteudo && typeof conteudo === 'string' && conteudo.trim().length > 0) {
-      return conteudo.trim();
-    }
-    
-    return this.MENSAGEM_ERRO_EXTRACAO;
-  }
-
-  private extrairReferencias(resposta: Mensagem): (string | Referencia)[] {
-    const refsRaw = resposta?.response?.references;
-
-    if (Array.isArray(refsRaw)) {
-      return refsRaw
-        .map((r: any) => {
-          if (typeof r === 'string') return r;
-          if (r?.title && r?.url) return { title: r.title, url: r.url };
-          if (r?.titulo && r?.url) return { title: r.titulo, url: r.url };
-          if (r?.title) return r.title;
-          if (r?.titulo) return r.titulo;
-          if (r?.url) return r.url;
-          return '';
-        })
-        .filter(Boolean);
-    }
-
-    return [];
-  }
-
   private validarResposta(conteudo: string): boolean {
-    return Boolean(conteudo && conteudo !== this.MENSAGEM_ERRO_EXTRACAO);
+    return Boolean(conteudo && conteudo !== ChatComponent.MENSAGEM_ERRO_EXTRACAO);
   }
 
   private decrementarContador(): void {
@@ -285,94 +296,23 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   }
 
   private salvarContador(): void {
-    localStorage.setItem(this.CHAVE_CONTADOR, this.contadorPerguntas().toString());
+    this.armazenamento.salvarNumero(ChatComponent.CHAVE_CONTADOR, this.contadorPerguntas());
   }
 
   private salvarMensagens(): void {
-    localStorage.setItem(this.CHAVE_MENSAGENS, JSON.stringify(this.mensagens()));
+    const paraSalvar = this.mensagens().map(m => {
+      const { mensagem, referencias, autor, dataHora } = m;
+      return { mensagem, referencias, autor, dataHora } as Mensagem;
+    });
+    this.armazenamento.salvar(ChatComponent.CHAVE_MENSAGENS, paraSalvar);
   }
 
   private salvarNivel(): void {
-    localStorage.setItem(this.CHAVE_NIVEL, this.nivelConversacao());
-  }
-
-  private obterUserId(): string {
-    let userId = localStorage.getItem(this.CHAVE_USUARIO_ID);
-    if (!userId) {
-      userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem(this.CHAVE_USUARIO_ID, userId);
-    }
-    return userId;
-  }
-
-  private removerTagsHtml(conteudo: string): string {
-    return conteudo.replace(/<[^>]*>/g, '');
-  }
-
-  private temClipboardModerno(): boolean {
-    return navigator.clipboard && window.isSecureContext;
-  }
-
-  private copiarComClipboardModerno(texto: string): void {
-    navigator.clipboard.writeText(texto).then(() => {
-      this.mostrarToast('Mensagem copiada para a área de transferência!');
-    }).catch(() => {
-      this.copiarComFallback(texto);
-    });
-  }
-
-  private copiarComFallback(texto: string): void {
-    const textArea = document.createElement('textarea');
-    textArea.value = texto;
-    textArea.style.position = 'fixed';
-    textArea.style.left = '-999999px';
-    textArea.style.top = '-999999px';
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    
-    try {
-      document.execCommand('copy');
-      this.mostrarToast('Mensagem copiada para a área de transferência!');
-    } catch (err) {
-      this.mostrarToast('Erro ao copiar mensagem', 'error');
-    }
-    
-    document.body.removeChild(textArea);
-  }
-
-  private temWebShare(): boolean {
-    return !!navigator.share;
-  }
-
-  private compartilharComWebShare(texto: string): void {
-    navigator.share({
-      title: 'IA Católica - Resposta',
-      text: texto,
-      url: window.location.href
-    }).catch(() => {
-      this.compartilharComFallback(texto);
-    });
-  }
-
-  private compartilharComFallback(texto: string): void {
-    const url = `https://wa.me/?text=${encodeURIComponent(texto + '\n\nFonte: IA Católica - ' + window.location.href)}`;
-    window.open(url, '_blank');
+    this.armazenamento.salvar(ChatComponent.CHAVE_NIVEL, this.nivelConversacao());
   }
 
   private mostrarToast(mensagem: string, tipo: 'success' | 'error' = 'success'): void {
-    const toast = document.createElement('div');
-    toast.className = `alert alert-${tipo === 'success' ? 'success' : 'danger'} position-fixed`;
-    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-    toast.textContent = mensagem;
-    
-    document.body.appendChild(toast);
-    
-    setTimeout(() => {
-      if (document.body.contains(toast)) {
-        document.body.removeChild(toast);
-      }
-    }, 3000);
+    this.ui.mostrarToast(mensagem, tipo);
   }
 
   selecionarNivel(nivel: 'basico' | 'intermediario' | 'avancado'): void {
@@ -381,50 +321,24 @@ export class ChatComponent implements OnInit, AfterViewChecked {
     this.salvarNivel();
   }
 
+  get streamingAtual(): string {
+    return this.enviarPerguntaUC.streamingResposta();
+  }
+
   private mostrarModalPerguntasEsgotadas(): void {
-    const modalElement = document.getElementById('modalPerguntasEsgotadas');
-    if (modalElement) {
-      // Usar Bootstrap Modal API se disponível
-      const modal = (window as any).bootstrap?.Modal?.getOrCreateInstance(modalElement);
-      if (modal) {
-        modal.show();
-      } else {
-        // Fallback: mostrar modal manualmente
-        modalElement.classList.add('show');
-        modalElement.style.display = 'block';
-        modalElement.setAttribute('aria-hidden', 'false');
-        
-        // Adicionar backdrop
-        const backdrop = document.createElement('div');
-        backdrop.className = 'modal-backdrop fade show';
-        backdrop.id = 'modalBackdrop';
-        document.body.appendChild(backdrop);
-        document.body.classList.add('modal-open');
-      }
-    }
+    this.ui.abrirModalPorId('modalPerguntasEsgotadas');
   }
 
   fecharModalPerguntasEsgotadas(): void {
-    const modalElement = document.getElementById('modalPerguntasEsgotadas');
-    if (modalElement) {
-      // Usar Bootstrap Modal API se disponível
-      const modal = (window as any).bootstrap?.Modal?.getInstance(modalElement);
-      if (modal) {
-        modal.hide();
-      } else {
-        // Fallback: fechar modal manualmente
-        modalElement.classList.remove('show');
-        modalElement.style.display = 'none';
-        modalElement.setAttribute('aria-hidden', 'true');
-        
-        // Remover backdrop
-        const backdrop = document.getElementById('modalBackdrop');
-        if (backdrop) {
-          document.body.removeChild(backdrop);
-        }
-        document.body.classList.remove('modal-open');
-      }
-    }
+    this.ui.fecharModalPorId('modalPerguntasEsgotadas');
+  }
+
+  abrirModalNiveis(): void {
+    this.ui.abrirModalPorId('modalNiveisConhecimento');
+  }
+
+  fecharModalNiveis(): void {
+    this.ui.fecharModalPorId('modalNiveisConhecimento');
   }
 
   assistirAnuncio(): void {
